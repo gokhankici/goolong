@@ -1,0 +1,27 @@
+#!/bin/zsh
+
+# REWRITE="sicstus --noinfo --nologo -l brisk-sequentialize/main.pl --goal main."
+
+THIS_DIR=${0:A:h}
+
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <file>"
+fi
+
+FILE="$1"
+SEQ_FILE="$1.seq"
+# REWRITECMD="${REWRITE} -a $FILE"
+
+
+ts=$(date +'%s%N')
+$THIS_DIR/brisk-sequentialize/brisk "$FILE" > "$SEQ_FILE"
+tt=$((($(date +'%s%N') - $ts)/1000000))
+echo "Rewrite: $tt milliseconds"
+
+ts=$(date +'%s%N')
+briskly "$SEQ_FILE"
+tt=$((($(date +'%s%N') - $ts)/1000000))
+echo "Check: $tt milliseconds"
+
+
+

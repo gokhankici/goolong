@@ -1,0 +1,5 @@
+prog(simple
+     , [decl(m,int),decl(q,set),decl(id,map(set(q),int))]
+     , ensures(forall([decl(i,int)],implies(elem(i,q),ref(id,q)=m)))
+     , seq([for(A,q,seq([assign(A,id,varOf(m,z))]))])
+    ).

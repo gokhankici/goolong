@@ -1,0 +1,74 @@
+prog( twophase
+    , [/* Process IDs */
+        decl(c, int)
+      , decl(p, set)
+      /* c's variables */
+      , decl(abort, int)
+      , decl(committed, int)
+      , decl(prop, int)        
+      , decl(reply, int)        
+      , decl(ack, int)
+      , decl(cmsg, int)
+      /* p's variables */
+      , decl(value, map(set(p), int))
+      , decl(bottom, map(set(p), int))
+      , decl(id, map(set(p), int))
+      , decl(val, map(set(p), int))
+      , decl(msg, map(set(p), int))
+      , decl(decision, map(set(p), int))
+      ]
+    , ensures(true)
+    , T
+    ) :-
+    
+/*    Agreement=and([forall([decl(i,int)], implies(and([elem(i,p), committed=1]), ref(value,i)=prop))
+                  ,forall([decl(i,int)], implies(and([elem(i,p), committed=0]), ref(value,i)=ref(bottom,i)))
+                  ]), */
+
+    /* ∀ i ∈ rest, i.val = prop */
+    Inv0=forall([decl(i,int)], implies(and([elem(i,r)]), ref(val,i)=prop)),
+
+    /* ∀ i ∈ rest, committed → i.val = i.value */
+    Inv1=forall([decl(i,int)], 
+                and([implies(elem(i,rr)
+                       , and([implies(committed=1, ref(value,i)=ref(val,i))
+                             ,implies(committed=0, true)]))
+                    ,implies(and([elem(i,p),not(elem(i,rr))]), ref(value,i)=0)])),
+
+	P1=seq([assign(c, abort, 0),
+		assign(c, committed, 0),
+		for(c, P, p, r, Inv0,
+		    seq([
+			 send(c, e_pid(P), pair(c,prop)),
+			 recv(c, e_pid(P), cmsg),
+			 ite(c, cmsg=1, assign(c, abort, 1), skip)
+			])
+		   ),
+		ite(c, abort=0, seq([
+				     assign(c,reply,1),
+				     assign(c,committed,1)
+				    ]),
+		    assign(c, reply, 0)
+		   ),
+		for(c, P, p, rr, Inv1,
+		    seq([
+			 send(c, e_pid(P), pair(c,reply)),
+			 recv(c, e_pid(P), ack)
+			])
+		   )
+	       ]),
+	
+	P2=seq([
+		assign(P, value, 0),
+		recv(P, e_pid(c), pair(id, val)),
+		ite(c, ndet,
+			 assign(P, msg, 0),
+			 assign(P, msg, 1)
+		   ),
+		send(P, e_var(id), msg),
+		recv(P, e_pid(c), pair(id, decision)),
+		ite(P, decision=1, assign(P, value, ref(val,P)), skip),
+		send(P, e_var(id), ack)
+	       ]),
+	T=(par([P1, sym(P, p, P2)]))
+    .

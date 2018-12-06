@@ -1,0 +1,16 @@
+prog( simple
+    , [ decl(m, int)
+      , decl(q, set)
+      , decl(id, map(set(q), int))
+      ]
+
+    , ensures(forall([decl(i, int)]
+                    , implies(elem(i,q), ref(id,i)=m)))
+    
+    , par([P1, sym(Q, q, P2)])
+    ) :-   P1=for(m, Q, q, rr, forall([decl(i,int)], Inv), send(m, e_pid(Q), m))
+         , P2=seq([ assign(Q,id,0)
+                  , recv(Q, e_pid(m), id)
+                  ])
+         , Inv=and([implies(and([elem(i,rr)]), ref(id,i)=m)])
+.

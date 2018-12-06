@@ -1,0 +1,66 @@
+prog( twophase                                                                                                           %% code
+      , [/* Process IDs */                                                                                               %% 
+          decl(c, int)                                                                                                   %% code
+          , decl(p, set)                                                                                                 %% code
+          /* c's variables */                                                                                            %% 
+          , decl(abort, int)                                                                                             %% code
+          , decl(committed, int)                                                                                         %% code
+          , decl(prop, int)                                                                                              %% code
+          , decl(reply, int)                                                                                             %% code
+          , decl(ack, int)                                                                                               %% code
+          , decl(cmsg, int)                                                                                              %% code
+          /* p's variables */                                                                                            %% 
+          , decl(value, map(set(p), int))                                                                                %% code
+          , decl(bottom, map(set(p), int))                                                                               %% code
+          , decl(id, map(set(p), int))                                                                                   %% code
+          , decl(val, map(set(p), int))                                                                                  %% code
+          , decl(msg, map(set(p), int))                                                                                  %% code
+          , decl(decision, map(set(p), int))                                                                             %% code
+      ], ensures(Agreement), T) :-                                                                                       %% code
+
+    Agreement=and([forall([decl(i,int)], implies(and([elem(i,p), committed=1]), ref(value,i)=prop))                      %% annot
+                   ,forall([decl(i,int)], implies(and([elem(i,p), committed=0]), ref(value,i)=0))                        %% annot
+                  ]),                                                                                                    %%
+
+    /* forall i in rest, i.val = prop */                                                                                 
+    Inv0=forall([decl(i,int)], implies(and([elem(i,r)]), and([ref(value,i)=0, ref(val,i)=prop]))),                       %% inv
+
+    /* forall i in rest, committed -> i.val = i.value */                                                                 
+    Inv1=forall([decl(i,int)], and([ implies(and([elem(i,rr), committed=1]), ref(value,i)=ref(val,i)),                   %% inv
+                                     implies(and([elem(i,p), committed=0]), ref(value,i)=0) ])),                         %% inv
+
+    P1=seq([assign(c, abort, 0),                                                                                         %% code
+            assign(c, committed, 0),                                                                                     %% code
+            for(c, P, p, r, Inv0,                                                                                        %% code
+                seq([send(c, e_pid(P), pair(c,prop)),                                                                    %% code
+                     recv(c, e_pid(P), cmsg),                                                                            %% code
+                     ite(c, cmsg=1, assign(c, abort, 1), skip)                                                           %% code
+                    ])                                                                                                   %% code
+               ),                                                                                                        %% code
+            ite(c, abort=0, seq([                                                                                        %% code
+                                       assign(c,reply,1),                                                                %% code
+                                       assign(c,committed,1)                                                             %% code
+                                   ]),                                                                                   %% code
+                assign(c, reply, 0)                                                                                      %% code
+               ),                                                                                                        %% code
+            for(c, P, p, rr, Inv1,                                                                                       %% code
+                seq([                                                                                                    %% code
+                           send(c, e_pid(P), pair(c,reply)),                                                             %% code
+                           recv(c, e_pid(P), ack)                                                                        %% code
+                       ])                                                                                                %% code
+               )                                                                                                         %% code
+           ]),                                                                                                           %% code
+
+    P2=seq([assign(P, value, 0),                                                                                         %% code
+            recv(P, e_pid(c), pair(id, val)),                                                                            %% code
+            ite(c, ndet,                                                                                                 %% code
+                assign(P, msg, 0),                                                                                       %% code
+                assign(P, msg, 1)                                                                                        %% code
+               ),                                                                                                        %% code
+            send(P, e_var(id), msg),                                                                                     %% code
+            recv(P, e_pid(c), pair(id, decision)),                                                                       %% code
+            ite(P, ref(decision,P)=1, assign(P, value, ref(val,P)), skip),                                               %% code
+            send(P, e_var(id), ack)                                                                                      %% code
+           ]),                                                                                                           %% code
+    T=(par([P1, sym(P, p, P2)]))                                                                                         %% code
+.

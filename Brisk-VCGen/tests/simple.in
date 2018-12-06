@@ -1,0 +1,14 @@
+prog(simple, 
+
+     [ decl(s,set)
+     , decl(x,int)
+     , decl(m,int)
+     , decl(id,map(set(s),int))
+     ], 
+
+     ensures(forall([decl(p,int)],implies(elem(p,s),sel(id,p)=m))), 
+     
+     seq([for(A,s,rr,forall([decl(p,int)], implies(elem(p,rr), ref(id,p)=m)),
+              seq([assign(A,id,m)]))]))
+
+    .

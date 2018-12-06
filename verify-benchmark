@@ -1,0 +1,108 @@
+#!/bin/zsh
+
+source ~/.zshrc
+
+function blue()  { print -P "%F{blue}%B$1%b%f" }
+function green() { print -P "%F{green}%B$1%b%f" }
+function red()   { print -P "%F{red}%B$1%b%f" }
+
+# global variables {{{
+THIS_DIR="${0:A:h}"
+GOCHAI_DIR="${THIS_DIR}"
+GOCHAI_SRC_DIR="${GOCHAI_DIR}/src"
+
+CHECKER="${GOCHAI_DIR}/bin/paxoschk"
+MP_CHECKER="${GOCHAI_DIR}/bin/multipaxoschk"
+
+BRISKIT_DIR="${THIS_DIR}/Brisk-VCGen"
+
+TMP_DIR="${GOCHAI_DIR}/.tmp"
+mkdir -p "$TMP_DIR"
+
+typeset -A GO_FILES
+GO_FILES=( \
+	"multi-paxos"      "${GOCHAI_SRC_DIR}/multipaxos/multipaxos.go" \
+	"paxos"            "${GOCHAI_SRC_DIR}/paxos/paxos.go" \
+	"raft"             "${GOCHAI_SRC_DIR}/raftcore/raftcore.go" \
+	"two-phase-commit" "${GOCHAI_SRC_DIR}/twopc/twopc.go" \
+	)
+# }}}
+
+# argument parsing {{{
+zparseopts -D -E -- \
+           h=HELP -h=HELP
+
+print_usage() {
+	echo "usage: ${0:t} [options] [( multi-paxos | paxos | raft | two-phase-commit )]"
+	echo "
+options:
+	-h, --help        Prints this help"
+}
+
+if [[ -n "$HELP" ]]; then
+	print_usage
+	exit 0
+fi
+
+if [[ $# -gt 0 ]]; then
+	BENCHMARK="$1"
+	if [[ "${(@k)GO_FILES[(ie)$BENCHMARK]}" != "$BENCHMARK" ]]; then
+		echo "unknown benchmark '$BENCHMARK'"
+		print_usage
+		exit 1
+	fi
+	shift
+else
+	BENCHMARK="ALL"
+fi
+
+if [[ $# -gt 0 ]]; then
+	echo "unknown argument(s) $@"
+	print_usage
+	exit 1
+fi
+
+# }}}
+
+# helper functions {{{
+verify_go_file() {
+	local name="$1"
+	local go_file="${GO_FILES[(e)$name]}"
+	local icet_file="${TMP_DIR}/$name.icet"
+
+	blue "Checking Go implementation of $name:"
+	blue "($go_file)"
+
+	local ts=$(date +'%s%N')
+
+	if [[ "$name" == "multi-paxos" ]]; then
+		$MP_CHECKER "$go_file" > "$icet_file"
+	else
+		$CHECKER "$go_file" > "$icet_file"
+	fi
+	echo "saved .icet file to $icet_file"
+
+	pushd $BRISKIT_DIR
+	./briskit "$icet_file"
+	popd
+
+	local tt=$((($(date +'%s%N') - $ts)/1000000))
+	echo "Total time taken: $tt milliseconds"
+
+	echo
+}
+# }}}
+
+if [[ "$BENCHMARK" == "ALL" ]];then
+	for name in ${(@ok)GO_FILES}; do
+		verify_go_file "$name"
+	done
+else
+	verify_go_file "$BENCHMARK"
+fi
+
+echo
+green "DONE"
+
+# vim: set foldmethod=marker:
+

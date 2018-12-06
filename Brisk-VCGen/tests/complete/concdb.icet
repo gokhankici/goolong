@@ -1,0 +1,57 @@
+prog(concdb, Decls, ensures(Property), par([sym(C,c,Client), while(db, true, DBLoop)]), while(db, true, DBLoop)) :-
+      append([decl(db, int), decl(c, set)], LocalDecls, Decls)
+    , append(ClientVars, DBVars, LocalDecls)
+    , Property=true
+    , ClientVars=[ decl(x, set)
+                 , decl(mykey, map(set(c), int))
+                 , decl(v, map(set(c), int))
+                 , decl(status_a, map(set(c), int))
+                 , decl(status_b, map(set(c), int))
+                 , decl(vv, map(set(c), int))
+                 ]
+    , Client=for(C, Z, x, rr, true,
+	             seq([ assign(C,mykey,Z),
+                       send(C, e_pid(db), pair(C, pair(0, pair(mykey, v)))),
+		               recv(C, e_pid(db), pair(status_a, vv)),
+
+            	       send(C, e_pid(db), pair(C, pair(1, pair(mykey, v)))),
+                       pre(C,forall([decl(i,int)],
+                                       implies(and([here(i), elem(i,c), ref(status_a,i)=1]),
+                                             and([ref(domain,ref(mykey,i))=1
+                                                 ,ref(the_db,ref(mykey,i))=ref(v,i)])))),
+                       group( recv(C, e_pid(db), pair(status_b, vv))
+                            , assert(C, implies(and([ref(status_a,C)=1, ref(status_b,C)=1]), ref(vv,C)=ref(v,C)))
+                            )
+                     ])
+	      )
+    , DBVars=[ decl(req, int)
+             , decl(id, int)
+             , decl(tag, int)
+             , decl(key, int)
+             , decl(val, int)
+             , decl(domain,map(int,int))
+             , decl(response_val,int)
+             , decl(response_tag,int)
+             , decl(the_db,map(int,int))]
+	, DBLoop=seq([
+		recv(db, e_pid(c), pair(id, pair(req, pair(key, val)))),
+		ite(db,
+		    req=0,
+		     ite(db, sel(domain,key)=1,
+		     assign(db,pair(response_tag, response_val),pair(0, 0)),
+		     seq([ assign(db,pair(response_tag, response_val), pair(1,1)),
+		           assign(db,domain,upd(domain,key,1)),
+		           assign(db,the_db,upd(the_db,key,val))
+		         ])
+		        )
+             ,
+		     ite(db, sel(domain,key)=1,
+		           seq([ assign(db, response_tag, 1),
+		                 assign(db, response_val, sel(the_db,key))
+		               ])
+                 , assign(db, response_tag, 0)
+		        )
+		    ),
+		send(db, e_var(id), pair(response_tag, response_val))
+	       ])
+.

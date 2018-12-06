@@ -1,0 +1,79 @@
+prog( raft_single,                                                                                                       %% 
+      Decls,                                                                                                             %% 
+      ensures(Safety),                                                                                                   %% 
+      Program                                                                                                            %% 
+    ) :-                                                                                                                 %% 
+    Decls=[ decl(f,          set),                                                                                       %% code
+            decl(c,          set),                                                                                       %% code
+            decl(voted,      map(set(f), int)),                                                                          %% code
+            decl(id,         map(set(f), int)),                                                                          %% code
+            decl(term,       map(set(f), int)),                                                                          %% code
+            decl(fterm,      map(set(f), int)),                                                                          %% code
+            decl(voted,      map(set(f), int)),                                                                          %% code
+            decl(votes,      map(set(f), map(int, int))),                                                                %% annot
+            decl(votedFor,   map(set(f), int)),                                                                          %% code
+            decl(success_f,  map(set(f), int)),                                                                          %% code
+            decl(count,      map(set(c), int)),                                                                          %% code
+            decl(isLeader,   map(set(c), int)),                                                                          %% code
+            decl(cterm,      map(set(c), int)),                                                                          %% code
+            decl(success_c,  map(set(c), int)),                                                                          %% code
+            decl(k,          map(set(c), int)),                                                                          %% annot
+            decl(l,          map(set(c), int)),                                                                          %% annot
+            decl(f0,         int)                                                                                        %% annot
+          ],                                                                                                             %% 
+
+    Safety=forall([decl(i,int), decl(j,int)], implies(and([elem(i,c), elem(j,c), ref(cterm,i)=ref(cterm,j), ref(isLeader,j)=1, ref(isLeader,i)=1]), i=j)), %% annot
+    Program=par([sym(F, f, P1), sym(C, c, P2)]),                                                                         %% code
+    /* followers */                                                                                                      %% 
+    P1= seq([for(F, _, c,                                                                                                %% code
+                 seq([ recv(F, e_pid(c), pair(id,term)),                                                                 %% code
+                       if(F, ref(fterm, F) < ref(term, F),                                                               %% code
+                          seq([ assign(F, fterm, term),                                                                  %% code
+                                assign(F, voted, 0),                                                                     %% code
+                                assign(F, votedFor, 0)                                                                   %% code
+                              ])                                                                                         %% code
+                         ),                                                                                              %% code
+                       ite(F, and([ref(fterm,F)=<ref(term,F),implies(ref(voted,F)=1, ref(votedFor,F)=ref(id,F))]),       %% code
+                           seq([ assign(F, voted, 1),                                                                    %% code
+                                 assign(F, votedFor, id),                                                                %% code
+                                 assign(F, votes, upd(votes, fterm, id)),                                                %% annot
+                                 assign(F, success_f, 1)                                                                 %% code
+                               ]),                                                                                       %% code
+                           assign(F, success_f, 0)                                                                       %% code
+                          ),                                                                                             %% code
+                       send(F, e_var(id), success_f)                                                                     %% code
+                     ])                                                                                                  %% code
+                )                                                                                                        %% code
+            ]),                                                                                                          %% 
+    /* Candidates */                                                                                                     %% 
+    P2= seq([pre(C, and([ref(k,C) = card(f), ref(l,C) = 0, ref(count,C) = 0, ref(isLeader, C) = 0])),                    %% annot
+             assign(C, count, 0),                                                                                        %% code
+             assign(C, isLeader, 0),                                                                                     %% code
+             assume(C, forall([decl(i,int)], ref(k,i) = card(f))),                                                       %% annot
+             assume(C, forall([decl(i,int)], ref(l,i) = 0)),                                                             %% annot
+             for(C, F, f,                                                                                                %% code
+                 seq([ pre(C, forall([decl(i,int)], implies(elem(i,c), and([ ref(k,i)+ref(l,i) =< card(f), ref(count,i)=ref(l,i)])))), %% inv
+                       send(C, e_pid(F), pair(C, cterm)),                                                                %% code
+                       recv(C, e_pid(F), success_c),                                                                     %% code
+                       if(C, ref(success_c,C)=1,                                                                         %% code
+                          assign(C, count, ref(count,C)+1)),                                                             %% code
+                       /* Ghost Updates: these should be done automatically in the sequentialized variant */             %% 
+                       if(C, and([ref(success_c,C)=1,ref(votedFor,F)=C, ref(fterm,F)=ref(cterm,C)]),                     %% annot
+                          seq([ assign(C, l, ref(l,C) + 1),                                                              %% annot
+                                assign(C, k, ref(k,C) - 1),                                                              %% annot
+                                assume(C, 0 < ref(l,C)),                                                                 %% annot
+                                assume(C, 0 =< ref(k,C))                                                                 %% annot
+                              ]))                                                                                        %% annot
+                     ])),                                                                                                %% code
+             group(pre(C, forall([decl(i,int)], implies(and([elem(i,c), ref(isLeader,i)=1]), card(f)<ref(count,i)*2))),  %% inv
+                   seq([ assume(C, forall([decl(i,int)], 0 =< ref(k,i))),                                                %% inv
+                         assume(C, forall([decl(i,int)], 0 =< ref(l,i))),                                                %% inv
+                         assume(C, elem(f0,f)),                                                                          %% inv
+                         assume(C, forall([decl(i,int),decl(j,int)], implies( and([elem(i,c), elem(j,c), ref(l,i)>card(f)/2, ref(l,j)>card(f)/2]), %% annot
+                                   and([ ref(ref(votes,f0),ref(cterm,i))=i, ref(ref(votes,f0),ref(cterm,j))=j, ref(cterm,i) =< ref(fterm, f0), ref(cterm,i) =< ref(fterm, f0)])))), %% annot
+                         pre(C, forall([decl(i,int), decl(j,int)], implies(and([elem(i,c), elem(j,c), ref(count,i) > card(f)/2, ref(count,j) > card(f)/2, ref(cterm,i)=ref(cterm,j), ref(isLeader,j)=1, ref(isLeader,i)=1]), i=j))), %% inv
+                         if(C, card(f)<2*ref(count,C),                                                                   %% code
+                            assign(C, isLeader, 1))                                                                      %% code
+                       ]))                                                                                               %% code
+            ])                                                                                                           %% code
+.                                                                                                                        %% 

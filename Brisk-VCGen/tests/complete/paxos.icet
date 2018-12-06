@@ -1,0 +1,206 @@
+prog('paxos', Decls, Safety, T, sym(A,a,while(A, true, AccLoop))) :-
+    
+    Safety = ensures(FinalAssert),
+    append([decl(p, set), decl(a,set)], LocalDecls, Decls),
+    append(PropDecls, AccDecls, LocalDecls),
+    PropDecls = [ decl(dc, map(set(p), int))
+                , decl(t, map(set(p), int))
+                , decl(w_t, map(set(p), int))
+                , decl(w, map(set(p), int))
+                , decl(x_t, map(set(p), int))
+                , decl(x, map(set(p), int))
+                , decl(ho, map(set(p), int))
+                , decl(ready, map(set(p), int))
+                , decl(retType, map(set(p), int))
+                , decl(decided, map(set(p), int))
+                , decl(p0, int)
+                , decl(a0, int)
+
+                , decl(k, map(set(p), int))
+                , decl(l, map(set(p), int))
+                , decl(m, map(set(p), int))
+                ],
+    Assumptions=seq([
+               /** Paxos assumption **/
+               assume(P, forall([decl(i,int)], implies(ref(t,i)=ref(t,P), i=P))),
+               /** Cardinality Invariants **/
+               assume(P, forall([decl(i,int)], implies(and([elem(i,p), ref(l,i) > card(a)/2])
+                                                         ,or([ref(ready,P)=0, ref(t,P) < ref(t,i)])))),
+               assume(P,elem(a0,a)),
+               assume(P,implies(and([0 =< ref(x_t,P)]),
+                                     and([ref(x,P) = ref(a_w,a0), ref(x_t,P) = ref(a_w_t,a0)]))),
+               assume(P, forall([decl(i,int)],
+                                implies(and([elem(i,p), ref(ready,i)=1,ref(k,i)+ref(l,i) > card(a)/2,ref(ready,P)=1])
+                                       ,and([ref(t,i) =< ref(x_t,P), 0 =< ref(x_t,P)]))))
+        ]),
+    FinalAssert=forall([decl(aa,int),decl(p1,int),decl(p2,int)]
+                             ,implies(
+                                  and([elem(aa,a)
+                                      ,elem(p1,p)
+                                      ,elem(p2,p)
+                                      ,ref(decided,p1)=1
+                                      ,ref(decided,p2)=1
+                                       /** Cardinalities **/
+                                      ,implies(and([ref(k,p1) > card(a)/2
+                                                   ,ref(k,p2) > card(a)/2])
+                                              ,and([ref(t,p1) =< ref(a_w_t,aa), ref(t,p2) =< ref(a_w_t,aa)]))
+                                      ,0 =< ref(l,p1), 0 =< ref(l,p2)])
+                              ,  ref(x,p1) = ref(x,p2))),
+                                                
+
+      %% assert (forall a,p1, p2 :: (a in As && p1 in Ps && p2 in Ps && Decided[p1] && Decided[p2] &&
+      %%   ((k[p1] > |As|/2 && k[p2] > |As|/2) ==> (V_T[a] >= T[p1] && V_T[a] >= T[p2])) &&
+      %%   l[p1] >= 0 && l[p2] >= 0)
+      %%   ==>
+      %%   X[p1] == X[p2]);
+	Prop=
+	seq([
+	     /* proposal phase */
+	     for(P, A, a,
+		 seq([
+                    pre(P, forall([decl(i,int)], implies(and([elem(i,p),here(i)]), 
+                                                 and([ref(ready,i)=0,ref(decided,i)=0
+                                                      ,ref(k,i) = 0
+                                                     , ref(k,i) + ref(l,i) + ref(m,i) = card(a)
+                                                     ])))),
+%		      tick(P,
+%			   seq([
+               Assumptions,
+
+				send(P, e_pid(A), pair(P, pair(0, pair(t, dc)))),
+				group(recv(P, e_pid(A), pair(dc, pair(w_t, w))),
+				ite(P, ref(w_t,P)>ref(x_t,P),
+				   seq([
+					assign(P, x_t, w_t),
+					assign(P, x, w),
+				    assign(P, ho, ref(ho,P) + 1)
+				       ]),
+                   skip
+				  ))
+				%% assign(P, ho, set_add(ho, A))
+%			       ])
+%			  )
+		  ])
+	     ),
+	     /* acceptance phase */
+
+	    if(P, ref(ho,P)>card(a)/2,
+	       seq([
+		    %% assign(P, ho, empty_set),
+            pre(P, forall([decl(i,int)], implies(and([elem(i,p),ref(decided,i)=1]),
+                                                 and([ ref(k,i) > card(a)/2
+                                                     , ref(ho,i) > card(a)/2
+                                                     , ref(ready,i)=1
+                                                     ])))),
+            pre(P, forall([decl(i,int)], implies(and([elem(i,p),here(i)]), 
+                                                 and([ref(decided,i)=0
+                                                     ,ref(k,i)=0
+                                                     , ref(k,i) + ref(l,i) + ref(m,i) = card(a)
+                                                     ])))),
+		    assign(P, ho, 0),
+		    assign(P, ready, 1),
+		    for(P, A, a,
+			seq([
+                 pre(P, forall([decl(i,int)], 
+                               implies(and([elem(i,p),here(i)]), 
+                                       and([ref(ready,i)=1
+                                            , ref(decided,i)=0
+                                            , ref(ho,i) =< ref(k,i) 
+                                            , ref(k,i) + ref(l,i) + ref(m,i) = card(a)
+                                           ]))
+                              )),
+                 pre(P,forall([decl(i,int),decl(j,int)],
+                                 implies(and([elem(i,p),elem(j,a),ref(l,i) > card(a)/2,ref(k,i)=0]),
+                                         ref(a_w_t,j) < ref(t,i)))),
+                 
+
+                 pre(P,forall([decl(qa,int),decl(qp,int)],
+                             implies( and([elem(qa,a),elem(qp,p),ref(ready,qp)=1,ref(t,qp) =< ref(a_w_t,qa),ref(k,qp)+ref(l,qp) > card(a)/2])
+                                    , ref(a_w,qa)=ref(x,qp)))),
+                 Assumptions,
+                 
+			     send(P, e_pid(A), pair(P, pair(1, pair(t, x)))),
+			     group(recv(P, e_pid(A), pair(retType, pair(dc, dc))),
+			     %% assign(P, ho, set_add(ho, A))
+			     seq([assign(P, ho, ref(ho,P)+1),
+                 /* ghost updates */
+                 assign(P, k, ref(k,P)+1),
+                 assign(P, l, ref(l,P)-1),
+                 assume(P, and([ref(k,P)>0, 0 =< ref(l,P)]))
+                     ]))
+			    ])
+		       ),
+		    if(P, 2*ref(ho,P)>card(a), seq([
+                 pre(P, forall([decl(i,int)], 
+                               implies(and([elem(i,p),here(i)]), 
+                                       and([ref(ready,i)=1
+                                            , ref(ho,i) =< ref(k,i) 
+                                            , ref(k,i) + ref(l,i) + ref(m,i) = card(a)
+                                           ]))
+                              )),
+              assign(P, decided, 1)
+            ]))
+		    ])%,
+	      )
+%	    */
+	    ]),
+	Proposers=sym(P, p,
+		      seq([
+			   %% assign(P, x_t, bottom),
+			   %% assign(P, ho, empty_set),
+               pre(P, ref(ready,P)=0),
+               pre(P, ref(decided,P)=0),
+               pre(P, ref(ho,P)=0),
+               pre(P, ref(t,P)>0),
+               pre(P, and([ref(k,P) = 0, ref(l,P) = card(a), ref(m,P) = 0])),
+			   assign(P, ho, 0),
+			   assign(P, ready, 0),
+			   assign(P, decided, 0),
+               assume(P, forall([decl(i,int)], and([ref(m,i)=0, ref(l,i) = card(a), ref(k,i) = 0,ref(t,i) > 0]))),
+			   Prop
+			  ])
+		     ),
+    AccDecls = [ decl(id, map(set(a), int)) 
+               , decl(msgType, map(set(a), int)) 
+               , decl(seqno, map(set(a), int)) 
+               , decl(val, map(set(a), int)) 
+               , decl(max, map(set(a), int)) 
+               , decl(a_w, map(set(a), int)) 
+               , decl(a_w_t, map(set(a), int)) 
+               , decl(bottom, map(set(a), int)) 
+               ],
+	AccLoop=seq([
+		     recv(A, e_pid(p), pair(id, pair(msgType, pair(seqno, val)))),
+		     ite(A, ref(msgType,A)=0,
+			 /* proposal message */
+			      if(A, ref(seqno,A)>ref(max,A), 
+                    seq([ assign(A, max, seqno)
+                        , if(A, ref(t,p0) =< ref(max,A), 
+                             seq([ assume(A, ref(l, p0) > 0)
+                                 , assign(p0, l, upd(l, p0, ref(l,p0) - 1))
+                                 , assign(p0, m, upd(m, p0, ref(m,p0) + 1))
+                                 ]))
+                        ])
+                    ),
+			 /* acceptance message */
+			 if(A, ref(max,A) =< ref(seqno,A),
+			    seq([
+				 assign(A, a_w, val),
+				 assign(A, a_w_t, seqno)
+				 ])
+			    )
+			 ),
+		     send(A, e_var(id), pair(1, pair(a_w_t, a_w)))
+		    ]),
+	Acceptors=sym(A, a,
+		      seq([
+               pre(A, ref(a_w_t,A) = 0),
+			   assign(A, max, bottom),
+			   assign(A, a_w, bottom),
+			   assign(A, a_w_t, 0),
+			   while(A, true, AccLoop)
+			  ])
+		     ),
+			 
+	T=(par([Proposers,Acceptors]))
+.

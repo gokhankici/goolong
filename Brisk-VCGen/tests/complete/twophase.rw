@@ -1,0 +1,22 @@
+prog(twophase, 
+     [decl(c,int),decl(p,set),decl(abort,int),decl(committed,int),decl(prop,int),decl(reply,int),decl(ack,int),decl(cmsg,int),decl(value,map(set(p),int)),decl(bottom,map(set(p),int)),decl(id,map(set(p),int)),decl(val,map(set(p),int)),decl(msg,map(set(p),int)),decl(decision,map(set(p),int))]
+     , ensures(true)
+     , seq([ assign(c,abort,0)
+           , assign(c,committed,0)
+           , for(c,A,p,r,forall([decl(i,int)],implies(and([elem(i,r)]),ref(val,i)=prop)),
+              seq([ assign(A,value,0)
+                  , assign(A,pair(id,val), c,pair(c,prop)) 
+                  , ite(c,ndet,seq([assign(A,msg,0)]),seq([assign(A,msg,1)]))
+                  , assign(c,cmsg,A,msg)
+                  , ite(c,cmsg=1,seq([assign(c,abort,1)]),skip)
+                  ]))
+           ,ite(c,abort=0
+                 ,seq([ assign(c,reply,1)
+                       ,assign(c,committed,1)
+                       ,for(c,A,p,rr,forall([decl(i,int)],and([implies(elem(i,rr),and([implies(committed=1,ref(value,i)=ref(val,i)),implies(committed=0,true)])),implies(and([elem(i,p),not(elem(i,rr))]),ref(value,i)=0)]))
+                            ,seq([ assign(A,pair(id,decision),c,pair(c,reply))
+                                  ,assign(A,value,ref(val,A))
+                                  ,assign(c,ack,A,ack)]))])
+                 ,seq([ assign(c,reply,0)
+                       ,for(c,A,p,rr,forall([decl(i,int)],and([implies(elem(i,rr),and([implies(committed=1,ref(value,i)=ref(val,i)),implies(committed=0,true)])),implies(and([elem(i,p),not(elem(i,rr))]),ref(value,i)=0)]))
+                            ,seq([assign(A,pair(id,decision),c,pair(c,reply)),assign(c,ack,A,ack)]))]))])).
